@@ -10,21 +10,24 @@ st.set_page_config(page_title="LottoLogic Pro", layout="wide")
 with st.sidebar:
     st.title("🏆 LottoLogic Pro")
     game_mode = st.radio("Select Game Mode", ["Lotto 6/42", "3D Swertres", "4D Lotto"])
+    
+    # Custom Settings for 6/42
+    if game_mode == "Lotto 6/42":
+        st.divider()
+        st.subheader("Picker Settings")
+        # Standard Golden Zone is 120-140
+        sum_range = st.slider("Target Sum Range", 21, 237, (120, 140))
+        st.caption("Lower sums = lower numbers. Higher sums = higher numbers.")
+    
     st.divider()
 
 # Set file and columns based on selection
 if game_mode == "Lotto 6/42":
-    CSV_FILE = 'lotto_data.csv'
-    cols = ['Date', 'N1', 'N2', 'N3', 'N4', 'N5', 'N6']
-    max_num = 42
+    CSV_FILE, cols = 'lotto_data.csv', ['Date', 'N1', 'N2', 'N3', 'N4', 'N5', 'N6']
 elif game_mode == "3D Swertres":
-    CSV_FILE = '3d_data.csv'
-    cols = ['Date', 'P1', 'P2', 'P3']
-    max_num = 9
+    CSV_FILE, cols = '3d_data.csv', ['Date', 'P1', 'P2', 'P3']
 else:
-    CSV_FILE = '4d_data.csv'
-    cols = ['Date', 'P1', 'P2', 'P3', 'P4']
-    max_num = 9
+    CSV_FILE, cols = '4d_data.csv', ['Date', 'P1', 'P2', 'P3', 'P4']
 
 # Initialize files if they don't exist
 if not os.path.exists(CSV_FILE):
@@ -57,7 +60,7 @@ with st.sidebar:
 # --- 4. MAIN DASHBOARD ---
 st.title(f"Analysis: {game_mode}")
 
-# --- CASE A: LOTTO 6/42 (GOLDEN ZONE) ---
+# --- CASE A: LOTTO 6/42 (GOLDEN ZONE + CUSTOM SUM) ---
 if game_mode == "Lotto 6/42":
     col1, col2 = st.columns([2, 1])
     
@@ -71,7 +74,7 @@ if game_mode == "Lotto 6/42":
 
     with col2:
         st.subheader("Smart Picker")
-        st.write("Target: **120-140 Sum** & **3-3 Mix**")
+        st.write(f"Targeting Sum: **{sum_range[0]} - {sum_range[1]}**")
         if st.button('Generate 6/42 Pick'):
             attempts = 0
             while True:
@@ -81,7 +84,8 @@ if game_mode == "Lotto 6/42":
                 low_count = len([n for n in pick if n <= 21])
                 total_sum = sum(pick)
                 
-                if odd_count == 3 and low_count == 3 and 120 <= total_sum <= 140:
+                # Filters: 3-3 Mix + User's Custom Sum Range
+                if odd_count == 3 and low_count == 3 and sum_range[0] <= total_sum <= sum_range[1]:
                     st.success(f"### {pick}")
                     st.write(f"**Sum:** {total_sum} | **Attempts:** {attempts}")
                     break
@@ -103,7 +107,7 @@ else:
                 gap_results[slot] = last_seen
             
             st.table(pd.DataFrame(gap_results).T)
-            st.caption("Higher numbers mean the digit is 'Cold' and due for a draw.")
+            st.caption("Higher numbers = longer since last seen. 'NEW' = never recorded.")
         else:
             st.info("No historical data found for Gaps.")
 
