@@ -4,15 +4,15 @@ import random
 import os
 
 # --- 1. APP CONFIGURATION ---
-st.set_page_config(page_title="LottoLogic Multi-Game", layout="wide")
+st.set_page_config(page_title="LottoLogic Pro", layout="wide")
 
-# --- 2. NAVIGATION ---
+# --- 2. NAVIGATION & DATABASE LOGIC ---
 with st.sidebar:
-    st.title("Settings")
+    st.title("🏆 LottoLogic Pro")
     game_mode = st.radio("Select Game Mode", ["Lotto 6/42", "3D Swertres", "4D Lotto"])
     st.divider()
 
-# Set database filename based on game
+# Set file and columns based on selection
 if game_mode == "Lotto 6/42":
     CSV_FILE = 'lotto_data.csv'
     cols = ['Date', 'N1', 'N2', 'N3', 'N4', 'N5', 'N6']
@@ -26,7 +26,7 @@ else:
     cols = ['Date', 'P1', 'P2', 'P3', 'P4']
     max_num = 9
 
-# Ensure the selected CSV exists
+# Initialize files if they don't exist
 if not os.path.exists(CSV_FILE):
     pd.DataFrame(columns=cols).to_csv(CSV_FILE, index=False)
 
@@ -47,44 +47,77 @@ with st.sidebar:
                     new_row = [new_date] + num_list
                     df.loc[len(df)] = new_row
                     df.to_csv(CSV_FILE, index=False)
-                    st.success("Saved!")
+                    st.success("Result Saved!")
                     st.rerun()
                 else:
                     st.error(f"Please enter exactly {len(cols)-1} numbers.")
             except:
-                st.error("Invalid format.")
+                st.error("Invalid format. Use numbers separated by commas.")
 
 # --- 4. MAIN DASHBOARD ---
 st.title(f"Analysis: {game_mode}")
 
+# --- CASE A: LOTTO 6/42 (GOLDEN ZONE) ---
 if game_mode == "Lotto 6/42":
-    # (Insert your existing 6/42 Logic here - Sum, Odd/Even filters)
-    st.write("Use your existing Golden Zone strategy here.")
-    # [Keep the 6/42 code block from your previous script here]
-
-else:
-    # 3D and 4D POSITIONAL ANALYSIS
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        st.subheader("Positional Heatmap")
+        st.subheader("Frequency Chart")
         if not df.empty:
-            # Show which digits (0-9) are hot for each slot
-            pos_data = df.drop(columns=['Date'])
-            st.bar_chart(pos_data.apply(pd.Series.value_counts).fillna(0))
-            st.caption("Each color represents a different position (Slot 1, Slot 2, etc.)")
+            all_nums = df[['N1', 'N2', 'N3', 'N4', 'N5', 'N6']].values.flatten()
+            st.bar_chart(pd.Series(all_nums).value_counts().sort_index())
         else:
-            st.info("Add data to see positional patterns.")
+            st.info("Input data to see frequency trends.")
+
+    with col2:
+        st.subheader("Smart Picker")
+        st.write("Target: **120-140 Sum** & **3-3 Mix**")
+        if st.button('Generate 6/42 Pick'):
+            attempts = 0
+            while True:
+                attempts += 1
+                pick = sorted(random.sample(range(1, 43), 6))
+                odd_count = len([n for n in pick if n % 2 != 0])
+                low_count = len([n for n in pick if n <= 21])
+                total_sum = sum(pick)
+                
+                if odd_count == 3 and low_count == 3 and 120 <= total_sum <= 140:
+                    st.success(f"### {pick}")
+                    st.write(f"**Sum:** {total_sum} | **Attempts:** {attempts}")
+                    break
+
+# --- CASE B: 3D & 4D (GAP ANALYSIS) ---
+else:
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.subheader("Positional Gap Analysis")
+        if not df.empty:
+            slots = [c for c in cols if c != 'Date']
+            gap_results = {}
+            for slot in slots:
+                last_seen = {}
+                for digit in range(10):
+                    idx = df.index[df[slot] == digit].tolist()
+                    last_seen[digit] = (len(df) - 1 - max(idx)) if idx else "NEW"
+                gap_results[slot] = last_seen
+            
+            st.table(pd.DataFrame(gap_results).T)
+            st.caption("Higher numbers mean the digit is 'Cold' and due for a draw.")
+        else:
+            st.info("No historical data found for Gaps.")
 
     with col2:
         st.subheader("Quick Pick")
-        if st.button('Generate 3D/4D Pick'):
-            if game_mode == "3D Swertres":
-                pick = [random.randint(0, 9) for _ in range(3)]
-            else:
-                pick = [random.randint(0, 9) for _ in range(4)]
-            st.success(f"### Proposed: {' - '.join(map(str, pick))}")
+        if st.button(f'Generate {game_mode}'):
+            pick_count = 3 if game_mode == "3D Swertres" else 4
+            pick = [random.randint(0, 9) for _ in range(pick_count)]
+            st.success(f"### {' - '.join(map(str, pick))}")
 
-# --- 5. LOG ---
+# --- 5. DATA LOG & EXPORT ---
 st.divider()
-st.dataframe(df.sort_values(by='Date', ascending=False), use_container_width=True)
+if not df.empty:
+    st.write("### Historical Log")
+    st.dataframe(df.sort_values(by='Date', ascending=False), use_container_width=True)
+    csv_data = df.to_csv(index=False).encode('utf-8')
+    st.download_button("📥 Backup CSV", csv_data, f"{game_mode}_data.csv", "text/csv")
