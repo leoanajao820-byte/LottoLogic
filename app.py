@@ -1,102 +1,150 @@
 import streamlit as st
 import pandas as pd
-import os
-from datetime import datetime
 import random
+import os
 
-# --- 1. INITIAL SETUP ---
-st.set_page_config(page_title="LottoLogic Pro", layout="wide")
+# --- 1. APP CONFIGURATION ---
+st.set_page_config(page_title="LottoLogic Pro: Adaptive Edition", layout="wide")
 
-# Sidebar for Game Selection
-st.sidebar.title("🏆 LottoLogic Pro")
-game_mode = st.sidebar.radio("Select Game Mode", ["Lotto 6/42", "3D Swertres", "4D Lotto"])
+# --- 2. NAVIGATION & DATABASE LOGIC ---
+with st.sidebar:
+    st.title("🏆 LottoLogic Pro")
+    game_mode = st.radio("Select Game Mode", ["Lotto 6/42", "3D Swertres", "4D Lotto"])
+    
+    if game_mode == "Lotto 6/42":
+        st.divider()
+        st.subheader("Manual Settings")
+        sum_range = st.slider("Target Sum Range", 21, 237, (120, 140))
+        st.caption("Standard 'Golden Zone' is 120-140.")
+    
+    st.divider()
 
-# Define filenames and columns based on mode
+# Set file and columns based on selection
 if game_mode == "Lotto 6/42":
-    csv_file = "lotto_data.csv"
-    cols = ["Date", "N1", "N2", "N3", "N4", "N5", "N6"]
+    CSV_FILE, cols = 'lotto_data.csv', ['Date', 'N1', 'N2', 'N3', 'N4', 'N5', 'N6']
 elif game_mode == "3D Swertres":
-    csv_file = "3d_data.csv"
-    cols = ["Date", "P1", "P2", "P3"]
+    CSV_FILE, cols = '3d_data.csv', ['Date', 'P1', 'P2', 'P3']
 else:
-    csv_file = "4d_data.csv"
-    cols = ["Date", "P1", "P2", "P3", "P4"]
+    CSV_FILE, cols = '4d_data.csv', ['Date', 'P1', 'P2', 'P3', 'P4']
 
-# --- 2. DATA LOAD ---
-if not os.path.exists(csv_file):
-    df = pd.DataFrame(columns=cols)
-    df.to_csv(csv_file, index=False)
-else:
-    df = pd.read_csv(csv_file)
+# Initialize files
+if not os.path.exists(CSV_FILE):
+    pd.DataFrame(columns=cols).to_csv(CSV_FILE, index=False)
 
-# --- 3. SIDEBAR: ADD NEW DATA ---
-st.sidebar.divider()
-st.sidebar.subheader(f"Add {game_mode} Result")
-new_date = st.sidebar.date_input("Draw Date", datetime.now())
-new_nums = st.sidebar.text_input("Numbers (comma separated)", placeholder="e.g. 4,1,9")
+df = pd.read_csv(CSV_FILE)
 
-if st.sidebar.button("Save Result"):
-    try:
-        num_list = [int(n.strip()) for n in new_nums.split(",")]
-        if len(num_list) == len(cols) - 1:
-            new_row = [new_date.strftime("%Y-%m-%d")] + num_list
-            new_df = pd.DataFrame([new_row], columns=cols)
-            df = pd.concat([df, new_df], ignore_index=True)
-            df.to_csv(csv_file, index=False)
-            st.sidebar.success("Result Saved!")
-            st.rerun()
-        else:
-            st.sidebar.error(f"Please enter exactly {len(cols)-1} numbers.")
-    except:
-        st.sidebar.error("Invalid format. Use numbers and commas.")
+# --- 3. DATA ENTRY (SIDEBAR) ---
+with st.sidebar:
+    st.header(f"Add {game_mode} Result")
+    with st.form("entry_form", clear_on_submit=True):
+        new_date = st.date_input("Draw Date")
+        n_input = st.text_input("Numbers (comma separated)")
+        submit = st.form_submit_button("Save Result")
+        
+        if submit:
+            try:
+                num_list = [int(x.strip()) for x in n_input.split(',')]
+                if len(num_list) == len(cols) - 1:
+                    new_row = [new_date] + num_list
+                    df.loc[len(df)] = new_row
+                    df.to_csv(CSV_FILE, index=False)
+                    st.success("Result Saved!")
+                    st.rerun()
+                else:
+                    st.error(f"Please enter exactly {len(cols)-1} numbers.")
+            except:
+                st.error("Invalid format. Use numbers separated by commas.")
 
-# --- 4. MAIN INTERFACE ---
+# --- 4. MAIN DASHBOARD ---
 st.title(f"Analysis: {game_mode}")
 
-col1, col2 = st.columns([2, 1])
-
-with col1:
-    st.subheader("Positional Gap Analysis")
-    if not df.empty and game_mode in ["3D Swertres", "4D Lotto"]:
-        slots = [c for c in cols if c != 'Date']
-        gap_results = []
-        for digit in range(10):
-            row = {"Digit": digit}
-            for slot in slots:
-                last_pos = df[df[slot] == digit].index
-                if not last_pos.empty:
-                    gap = len(df) - 1 - last_pos[-1]
-                    row[slot] = gap
-                else:
-                    row[slot] = "NEW"
-            gap_results.append(row)
-        
-        gap_df = pd.DataFrame(gap_results)
-        
-        def highlight_sweet_spot(val):
-            if isinstance(val, int) and 8 <= val <= 12:
-                return 'background-color: #2e7d32; color: white'
-            return ''
-        
-        try:
-            st.dataframe(gap_df.style.map(highlight_sweet_spot), use_container_width=True)
-        except AttributeError:
-            st.dataframe(gap_df.style.applymap(highlight_sweet_spot), use_container_width=True)
-    else:
-        st.info("No historical data found for Gaps. Add some results in the sidebar!")
-
-with col2:
-    st.subheader("Quick Pick")
-    if st.button(f"Generate {game_mode}"):
-        st.write("🎯 **Recommended Pick:**")
-        if game_mode == "Lotto 6/42":
-            pick = sorted(random.sample(range(1, 43), 6))
-            st.code("-".join(map(str, pick)))
+# --- CASE A: LOTTO 6/42 (ADAPTIVE SMART PICKER) ---
+if game_mode == "Lotto 6/42":
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.subheader("Frequency Chart")
+        if not df.empty:
+            all_nums = df[['N1', 'N2', 'N3', 'N4', 'N5', 'N6']].values.flatten()
+            st.bar_chart(pd.Series(all_nums).value_counts().sort_index())
         else:
-            pick = [str(random.randint(0, 9)) for _ in range(len(cols)-1)]
-            st.code(" - ".join(pick))
+            st.info("Input data to see frequency trends.")
 
-# --- 5. HISTORICAL LOG ---
+    with col2:
+        st.subheader("Adaptive Picker")
+        
+        # --- LAW OF AVERAGES LOGIC ---
+        suggested_min, suggested_max = sum_range
+        if len(df) >= 3:
+            # Calculate mean of the last 3 draws
+            recent_sums = df.tail(3)[['N1', 'N2', 'N3', 'N4', 'N5', 'N6']].sum(axis=1).mean()
+            
+            # Correction logic (Regression to the Mean)
+            if recent_sums < 115:
+                st.warning(f"⚠️ Regression Alert: Recent draws were LOW (Avg: {recent_sums:.1f}). Shifting HIGH.")
+                suggested_min, suggested_max = 135, 160
+            elif recent_sums > 145:
+                st.warning(f"⚠️ Regression Alert: Recent draws were HIGH (Avg: {recent_sums:.1f}). Shifting LOW.")
+                suggested_min, suggested_max = 100, 125
+        
+        st.write(f"Active Target: **{suggested_min}-{suggested_max} Sum**")
+        
+        if st.button('Generate 6/42 Pick'):
+            attempts = 0
+            while True:
+                attempts += 1
+                pick = sorted(random.sample(range(1, 43), 6))
+                odd_count = len([n for n in pick if n % 2 != 0])
+                low_count = len([n for n in pick if n <= 21])
+                total_sum = sum(pick)
+                
+                # Filters: 3-3 Mix + Adaptive Sum Range
+                if odd_count == 3 and low_count == 3 and suggested_min <= total_sum <= suggested_max:
+                    st.success(f"### {pick}")
+                    st.write(f"**Sum:** {total_sum} | **Mix:** 3 Odd/3 Even")
+                    st.caption(f"Filtered {attempts:,} combinations to satisfy current probability filters.")
+                    break
+
+# --- CASE B: 3D & 4D (GAP ANALYSIS) ---
+else:
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.subheader("Positional Gap Analysis")
+        if not df.empty:
+            slots = [c for c in cols if c != 'Date']
+            gap_results = {}
+            for slot in slots:
+                last_seen = {}
+                for digit in range(10):
+                    idx = df.index[df[slot] == digit].tolist()
+                    last_seen[digit] = (len(df) - 1 - max(idx)) if idx else "NEW"
+                gap_results[slot] = last_seen
+            st.table(pd.DataFrame(gap_results).T)
+        else:
+            st.info("No historical data found for Gaps.")
+
+    with col2:
+        st.subheader("Quick Pick")
+        if st.button(f'Generate {game_mode}'):
+            pick_count = 3 if game_mode == "3D Swertres" else 4
+            pick = [random.randint(0, 9) for _ in range(pick_count)]
+            st.success(f"### {' - '.join(map(str, pick))}")
+
+# --- 5. DATA LOG & DYNAMIC ANALYSIS ---
 st.divider()
-st.subheader("Historical Log")
-st.dataframe(df.sort_values(by="Date", ascending=False), use_container_width=True)
+if not df.empty:
+    st.subheader("Historical Log")
+    display_df = df.copy()
+    
+    # Calculate Sum and Stats for 6/42
+    if game_mode == "Lotto 6/42":
+        display_df['Total Sum'] = display_df[['N1', 'N2', 'N3', 'N4', 'N5', 'N6']].sum(axis=1)
+        avg_sum = display_df['Total Sum'].mean()
+        st.info(f"📊 Historical Insight: Your recorded database average sum is **{avg_sum:.1f}**.")
+    
+    st.dataframe(display_df.sort_values(by='Date', ascending=False), use_container_width=True)
+    
+    # Export Options
+    csv_data = df.to_csv(index=False).encode('utf-8')
+    st.download_button("📥 Backup CSV", csv_data, f"{game_mode}_data.csv", "text/csv")
