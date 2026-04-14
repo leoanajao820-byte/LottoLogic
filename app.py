@@ -11,13 +11,12 @@ with st.sidebar:
     st.title("🏆 LottoLogic Pro")
     game_mode = st.radio("Select Game Mode", ["Lotto 6/42", "3D Swertres", "4D Lotto"])
     
-    # Custom Settings for 6/42
+    # Range Slider for 6/42 (Golden Zone)
     if game_mode == "Lotto 6/42":
         st.divider()
         st.subheader("Picker Settings")
-        # Standard Golden Zone is 120-140
         sum_range = st.slider("Target Sum Range", 21, 237, (120, 140))
-        st.caption("Lower sums = lower numbers. Higher sums = higher numbers.")
+        st.caption("Standard 'Golden Zone' is 120-140.")
     
     st.divider()
 
@@ -60,7 +59,7 @@ with st.sidebar:
 # --- 4. MAIN DASHBOARD ---
 st.title(f"Analysis: {game_mode}")
 
-# --- CASE A: LOTTO 6/42 (GOLDEN ZONE + CUSTOM SUM) ---
+# --- CASE A: LOTTO 6/42 (FREQUENCY + SMART PICKER) ---
 if game_mode == "Lotto 6/42":
     col1, col2 = st.columns([2, 1])
     
@@ -74,7 +73,7 @@ if game_mode == "Lotto 6/42":
 
     with col2:
         st.subheader("Smart Picker")
-        st.write(f"Targeting Sum: **{sum_range[0]} - {sum_range[1]}**")
+        st.write(f"Targeting: **{sum_range[0]}-{sum_range[1]} Sum**")
         if st.button('Generate 6/42 Pick'):
             attempts = 0
             while True:
@@ -84,10 +83,10 @@ if game_mode == "Lotto 6/42":
                 low_count = len([n for n in pick if n <= 21])
                 total_sum = sum(pick)
                 
-                # Filters: 3-3 Mix + User's Custom Sum Range
                 if odd_count == 3 and low_count == 3 and sum_range[0] <= total_sum <= sum_range[1]:
                     st.success(f"### {pick}")
-                    st.write(f"**Sum:** {total_sum} | **Attempts:** {attempts}")
+                    st.write(f"**Sum:** {total_sum} | **Mix:** 3 Odd/3 Even")
+                    st.caption(f"Filtered {attempts:,} combinations to find this match.")
                     break
 
 # --- CASE B: 3D & 4D (GAP ANALYSIS) ---
@@ -105,9 +104,7 @@ else:
                     idx = df.index[df[slot] == digit].tolist()
                     last_seen[digit] = (len(df) - 1 - max(idx)) if idx else "NEW"
                 gap_results[slot] = last_seen
-            
             st.table(pd.DataFrame(gap_results).T)
-            st.caption("Higher numbers = longer since last seen. 'NEW' = never recorded.")
         else:
             st.info("No historical data found for Gaps.")
 
@@ -118,10 +115,20 @@ else:
             pick = [random.randint(0, 9) for _ in range(pick_count)]
             st.success(f"### {' - '.join(map(str, pick))}")
 
-# --- 5. DATA LOG & EXPORT ---
+# --- 5. HISTORICAL LOG WITH DYNAMIC SUM ---
 st.divider()
 if not df.empty:
-    st.write("### Historical Log")
-    st.dataframe(df.sort_values(by='Date', ascending=False), use_container_width=True)
+    st.subheader("Historical Log")
+    display_df = df.copy()
+    
+    # Calculate Sum and Average ONLY for 6/42 mode
+    if game_mode == "Lotto 6/42":
+        display_df['Total Sum'] = display_df[['N1', 'N2', 'N3', 'N4', 'N5', 'N6']].sum(axis=1)
+        avg_sum = display_df['Total Sum'].mean()
+        st.info(f"💡 The average sum of your recorded draws is **{avg_sum:.1f}**.")
+    
+    st.dataframe(display_df.sort_values(by='Date', ascending=False), use_container_width=True)
+    
+    # Backup Button
     csv_data = df.to_csv(index=False).encode('utf-8')
     st.download_button("📥 Backup CSV", csv_data, f"{game_mode}_data.csv", "text/csv")
