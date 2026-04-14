@@ -4,17 +4,16 @@ import random
 import os
 
 # --- 1. APP CONFIGURATION ---
-st.set_page_config(page_title="LottoLogic Pro", layout="wide")
+st.set_page_config(page_title="LottoLogic Pro: Adaptive Edition", layout="wide")
 
 # --- 2. NAVIGATION & DATABASE LOGIC ---
 with st.sidebar:
     st.title("🏆 LottoLogic Pro")
     game_mode = st.radio("Select Game Mode", ["Lotto 6/42", "3D Swertres", "4D Lotto"])
     
-    # Range Slider for 6/42 (Golden Zone)
     if game_mode == "Lotto 6/42":
         st.divider()
-        st.subheader("Picker Settings")
+        st.subheader("Manual Settings")
         sum_range = st.slider("Target Sum Range", 21, 237, (120, 140))
         st.caption("Standard 'Golden Zone' is 120-140.")
     
@@ -28,7 +27,7 @@ elif game_mode == "3D Swertres":
 else:
     CSV_FILE, cols = '4d_data.csv', ['Date', 'P1', 'P2', 'P3', 'P4']
 
-# Initialize files if they don't exist
+# Initialize files
 if not os.path.exists(CSV_FILE):
     pd.DataFrame(columns=cols).to_csv(CSV_FILE, index=False)
 
@@ -59,7 +58,7 @@ with st.sidebar:
 # --- 4. MAIN DASHBOARD ---
 st.title(f"Analysis: {game_mode}")
 
-# --- CASE A: LOTTO 6/42 (FREQUENCY + SMART PICKER) ---
+# --- CASE A: LOTTO 6/42 (ADAPTIVE SMART PICKER) ---
 if game_mode == "Lotto 6/42":
     col1, col2 = st.columns([2, 1])
     
@@ -72,8 +71,24 @@ if game_mode == "Lotto 6/42":
             st.info("Input data to see frequency trends.")
 
     with col2:
-        st.subheader("Smart Picker")
-        st.write(f"Targeting: **{sum_range[0]}-{sum_range[1]} Sum**")
+        st.subheader("Adaptive Picker")
+        
+        # --- LAW OF AVERAGES LOGIC ---
+        suggested_min, suggested_max = sum_range
+        if len(df) >= 3:
+            # Calculate mean of the last 3 draws
+            recent_sums = df.tail(3)[['N1', 'N2', 'N3', 'N4', 'N5', 'N6']].sum(axis=1).mean()
+            
+            # Correction logic (Regression to the Mean)
+            if recent_sums < 115:
+                st.warning(f"⚠️ Regression Alert: Recent draws were LOW (Avg: {recent_sums:.1f}). Shifting HIGH.")
+                suggested_min, suggested_max = 135, 160
+            elif recent_sums > 145:
+                st.warning(f"⚠️ Regression Alert: Recent draws were HIGH (Avg: {recent_sums:.1f}). Shifting LOW.")
+                suggested_min, suggested_max = 100, 125
+        
+        st.write(f"Active Target: **{suggested_min}-{suggested_max} Sum**")
+        
         if st.button('Generate 6/42 Pick'):
             attempts = 0
             while True:
@@ -83,10 +98,11 @@ if game_mode == "Lotto 6/42":
                 low_count = len([n for n in pick if n <= 21])
                 total_sum = sum(pick)
                 
-                if odd_count == 3 and low_count == 3 and sum_range[0] <= total_sum <= sum_range[1]:
+                # Filters: 3-3 Mix + Adaptive Sum Range
+                if odd_count == 3 and low_count == 3 and suggested_min <= total_sum <= suggested_max:
                     st.success(f"### {pick}")
                     st.write(f"**Sum:** {total_sum} | **Mix:** 3 Odd/3 Even")
-                    st.caption(f"Filtered {attempts:,} combinations to find this match.")
+                    st.caption(f"Filtered {attempts:,} combinations to satisfy current probability filters.")
                     break
 
 # --- CASE B: 3D & 4D (GAP ANALYSIS) ---
@@ -115,20 +131,20 @@ else:
             pick = [random.randint(0, 9) for _ in range(pick_count)]
             st.success(f"### {' - '.join(map(str, pick))}")
 
-# --- 5. HISTORICAL LOG WITH DYNAMIC SUM ---
+# --- 5. DATA LOG & DYNAMIC ANALYSIS ---
 st.divider()
 if not df.empty:
     st.subheader("Historical Log")
     display_df = df.copy()
     
-    # Calculate Sum and Average ONLY for 6/42 mode
+    # Calculate Sum and Stats for 6/42
     if game_mode == "Lotto 6/42":
         display_df['Total Sum'] = display_df[['N1', 'N2', 'N3', 'N4', 'N5', 'N6']].sum(axis=1)
         avg_sum = display_df['Total Sum'].mean()
-        st.info(f"💡 The average sum of your recorded draws is **{avg_sum:.1f}**.")
+        st.info(f"📊 Historical Insight: Your recorded database average sum is **{avg_sum:.1f}**.")
     
     st.dataframe(display_df.sort_values(by='Date', ascending=False), use_container_width=True)
     
-    # Backup Button
+    # Export Options
     csv_data = df.to_csv(index=False).encode('utf-8')
     st.download_button("📥 Backup CSV", csv_data, f"{game_mode}_data.csv", "text/csv")
