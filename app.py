@@ -1,12 +1,11 @@
 import streamlit as st
 import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
 import os
 from datetime import datetime
+import random
 
 # --- 1. INITIAL SETUP ---
-st.set_page_config(page_title="LottoLogic Pro: Adaptive Edition", layout="wide")
+st.set_page_config(page_title="LottoLogic Pro", layout="wide")
 
 # Sidebar for Game Selection
 st.sidebar.title("🏆 LottoLogic Pro")
@@ -59,7 +58,6 @@ col1, col2 = st.columns([2, 1])
 with col1:
     st.subheader("Positional Gap Analysis")
     if not df.empty and game_mode in ["3D Swertres", "4D Lotto"]:
-        # Calculate Gaps
         slots = [c for c in cols if c != 'Date']
         gap_results = []
         for digit in range(10):
@@ -75,48 +73,30 @@ with col1:
         
         gap_df = pd.DataFrame(gap_results)
         
-        # Highlight Sweet Spot (Gap 8-12)
         def highlight_sweet_spot(val):
             if isinstance(val, int) and 8 <= val <= 12:
                 return 'background-color: #2e7d32; color: white'
             return ''
         
-        st.dataframe(gap_df.style.applymap(highlight_sweet_spot), use_container_width=True)
+        try:
+            st.dataframe(gap_df.style.map(highlight_sweet_spot), use_container_width=True)
+        except AttributeError:
+            st.dataframe(gap_df.style.applymap(highlight_sweet_spot), use_container_width=True)
     else:
-        st.info("No historical data found for Gaps.")
+        st.info("No historical data found for Gaps. Add some results in the sidebar!")
 
 with col2:
     st.subheader("Quick Pick")
     if st.button(f"Generate {game_mode}"):
         st.write("🎯 **Recommended Pick:**")
-        # Placeholder for complex logic; generates random based on valid ranges
         if game_mode == "Lotto 6/42":
-            import random
             pick = sorted(random.sample(range(1, 43), 6))
             st.code("-".join(map(str, pick)))
         else:
             pick = [str(random.randint(0, 9)) for _ in range(len(cols)-1)]
             st.code(" - ".join(pick))
 
-# --- 5. VISUAL HEAT MAP ---
+# --- 5. HISTORICAL LOG ---
 st.divider()
-if not df.empty and game_mode in ["3D Swertres", "4D Lotto"]:
-    st.subheader("📊 Positional Frequency Heat Map")
-    
-    slots = [c for c in cols if c != 'Date']
-    heat_data = pd.DataFrame(index=range(10), columns=slots)
-    
-    for slot in slots:
-        counts = df[slot].value_counts()
-        for i in range(10):
-            heat_data.loc[i, slot] = counts.get(i, 0)
-    
-    fig, ax = plt.subplots(figsize=(8, 4))
-    sns.heatmap(heat_data.astype(int), annot=True, cmap="YlOrRd", fmt="d", ax=ax)
-    plt.title(f"Digit Hits per Slot ({game_mode})")
-    st.pyplot(fig)
-    st.caption("🔥 Darker Red = High Frequency | ❄️ Lighter/Yellow = Low Frequency (Cold)")
-
-# --- 6. HISTORICAL LOG ---
 st.subheader("Historical Log")
 st.dataframe(df.sort_values(by="Date", ascending=False), use_container_width=True)
